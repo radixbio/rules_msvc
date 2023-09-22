@@ -1,0 +1,103 @@
+FROM ubuntu:focal as winebase
+USER root
+WORKDIR /root
+
+ARG WINE_UID=1000
+ARG WINE_GID=1000
+ARG WINE_UMASK=000
+ENV WINE_UMASK=$WINE_UMASK
+
+# make a wine user/group
+RUN groupadd --gid $WINE_GID wine && \
+    adduser --uid $WINE_UID --gid $WINE_GID --gecos "" --disabled-password wine
+WORKDIR /home/wine
+
+# install basics
+RUN apt-get update && apt-get install -y \
+    apt-transport-https \
+    software-properties-common \
+    wget \
+ && rm -rf /var/lib/apt/lists/*
+
+# setup wine repo
+RUN dpkg --add-architecture i386 && \
+    wget -nc https://dl.winehq.org/wine-builds/winehq.key && \
+    apt-key add winehq.key && \
+    apt-add-repository 'deb https://dl.winehq.org/wine-builds/ubuntu/ focal main' && \
+    rm *.key
+
+# install wine
+ARG WINE_VER
+RUN apt-get update && apt-get install -y --install-recommends \
+    winehq-staging=$WINE_VER~focal-1 \
+    wine-staging=$WINE_VER~focal-1 \
+    wine-staging-amd64=$WINE_VER~focal-1 \
+    wine-staging-i386=$WINE_VER~focal-1 \
+ && rm -rf /var/lib/apt/lists/*
+
+# install winetricks
+RUN wget https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks -O /usr/local/bin/winetricks && \
+    chmod +x /usr/local/bin/winetricks
+
+# tools used by wine
+RUN apt-get update && apt-get install -y \
+    cabextract \
+    dos2unix \
+    p7zip-full \
+    winbind \
+    zip \
+ && rm -rf /var/lib/apt/lists/*
+
+# setup wine
+ENV WINEARCH win64
+ENV WINEPREFIX=/opt/win
+RUN umask $WINE_UMASK && mkdir -p $WINEPREFIX && chown -R wine:wine $WINEPREFIX
+USER wine
+RUN umask $WINE_UMASK && winetricks win10
+RUN umask $WINE_UMASK && wine cmd.exe /c echo '%ProgramFiles%'
+RUN ls -l $WINEPREFIX
+
+# dotnet in wine
+RUN umask $WINE_UMASK && winetricks -q dotnet472
+RUN umask $WINE_UMASK && winetricks win10
+
+# make a tools dir
+RUN umask $WINE_UMASK && mkdir -p $WINEPREFIX/drive_c/tools/bin
+ENV WINEPATH C:\\tools\\bin
+
+# install which in wine (for easy path debugging)
+RUN umask $WINE_UMASK && \
+    wget http://downloads.sourceforge.net/gnuwin32/which-2.20-bin.zip -O which.zip && \
+    cd "$WINEPREFIX/drive_c/tools" && \
+    unzip $HOME/which.zip && \
+    rm $HOME/which.zip
+RUN umask $WINE_UMASK && wine which --version
+
+# turn off wine's verbose logging
+ENV WINEDEBUG=-all
+
+# support for mult-user wine
+ADD dockertools/wineexec /usr/local/bin/wine
+ADD dockertools/wineexec /usr/local/bin/wine64
+
+# reboot for luck
+RUN umask $WINE_UMASK && winetricks win10
+RUN umask $WINE_UMASK && wineboot -r
+
+ENTRYPOINT [ "/usr/bin/wine64", "cmd", "/c" ]
+CMD [ "cmd" ]
+
+#################################
+FROM winebase as clangbase
+
+# install clang on host (for clang-cl)
+ENV CLANG_HOME=/opt/bin
+ENV CC=clang-cl
+ENV CXX=clang-cl
+ARG CLANG_VER=12.0.0
+USER root
+RUN wget https://github.com/llvm/llvm-project/releases/download/llvmorg-$CLANG_VER/clang+llvm-$CLANG_VER-x86_64-linux-gnu-ubuntu-20.04.tar.xz && \
+    tar xvf *.tar.xz && \
+    cp -r clang*/* /opt && \
+    rm -rf clang*
+USER wine

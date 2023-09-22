@@ -1,0 +1,10 @@
+FROM ghcr.io/radixbio/msvc:temp
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt update
+RUN apt install -y openjdk-8-jdk unzip wget
+RUN mkdir /opt/msvc
+RUN cd /opt/msvc && wget https://download.java.net/openjdk/jdk8u41/ri/openjdk-8u41-b04-windows-i586-14_jan_2020.zip
+RUN cd /opt/msvc && unzip openjdk-8u41-b04-windows-i586-14_jan_2020.zip
+RUN cp -r /opt/msvc/java-se-8u41-ri/include /opt/javainclude
+RUN rm -fr /opt/msvc/java-se-8u41-ri && rm -fr /opt/msvc/openjdk-8u41-b04-windows-i586-14_jan_2020.zip

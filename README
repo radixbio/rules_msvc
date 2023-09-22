@@ -1,0 +1,29 @@
+# MSVC in a windows box, snapshotted and transferred into WINE
+
+Loosley, this boots a vagrant windows vm, snapshots the disk, installs visual studio, snapshots the disk
+and loads the diff into a wine docker container. There's a `pkg.bzl` file that packs `cl.exe` and `link.exe` from
+this container to a `msvc_jni` rule to build windows DLL's on linux.
+
+
+This takes a ton of space, and does some fairly cursed things to make bazel and wine and docker and msvc to play nice
+it currently only support MSVC 15 (2017)
+
+also there's no way to get the snapshot out of vagrant using the qemu/libvirt stack, so i have these gems to do the snapshot file transfer
+```
+vagrant-libvirt (0.7.0, global)
+vagrant-reload (0.0.1, global)
+vagrant-scp (0.5.9, global)
+vagrant-sshfs (1.3.6, global)
+vagrant-winrm-syncedfolders (1.0.1, global)
+virtualbox (0.8.6, global)
+winrm (2.3.6, global)
+winrm-elevated (1.2.3, global)
+```
+
+
+```
+vagrant up --provider=libvirt --provision win-msvc15
+scp vagrant@<<IP>>:C:\\vagrant\\msvc15 build
+docker build -f Dockerfile -t my-msvc:15 --build-arg WINE_VER=6.12 --build-arg MSVC=15 .
+docker build -f Dockerfile.winjdk -t msvc-winjdk:latest .
+```
